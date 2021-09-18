@@ -1,0 +1,414 @@
+---
+title: "Statistics project"
+author: "Cheik Samassa"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    highlight: zenburn
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+    code_folding: show
+---
+https://rstudio-pubs-static.s3.amazonaws.com/281788_ba06442931084c42aeafe0cce17785c5.html
+
+```{r, setup, echo=FALSE}
+knitr::opts_chunk$set(
+  message = FALSE, 
+  warning = FALSE, 
+  tidy=FALSE,     # display code as typed
+  size="small")   # slightly smaller font for code
+options(digits = 3)
+
+# default figure size
+knitr::opts_chunk$set(
+  fig.width=6.75, 
+  fig.height=6.75,
+  fig.align = "center")
+  
+```
+
+```{r, setup, echo=FALSE}
+library(tidyverse)  # Load ggplot2, dplyr, and all the other tidyverse packages
+library(mosaic)
+library(ggthemes)
+library(lubridate)
+library(skimr)
+install.packages("psych")
+library(psych)
+
+```
+# Dataset selection
+
+We created the dataset we used for this project from several open source datasets available on Imdb.com. 
+More specifically we used the following datasets:
+
+## the title.basics.tsv.gz 
+Contains the following information for titles:
+-tconst (string) - alphanumeric unique identifier of the title
+-titleType (string) – the type/format of the title (e.g. movie, short, tvseries, -tvepisode, video, etc)
+-primaryTitle (string) – the more popular title / the title used by the filmmakers on promotional materials at the point of release
+-originalTitle (string) - original title, in the original language
+-isAdult (boolean) - 0: non-adult title; 1: adult title
+startYear (YYYY) – represents the release year of a title. In the case of TV Series, -it is the series start year
+-endYear (YYYY) – TV Series end year. ‘\N’ for all other title types
+-runtimeMinutes – primary runtime of the title, in minutes
+-genres (string array) – includes up to three genres associated with the title
+
+##title.episode.tsv.gz  
+Contains the tv episode information. Fields include:
+-tconst (string) - alphanumeric identifier of episode
+-parentTconst (string) - alphanumeric identifier of the parent TV Series
+-seasonNumber (integer) – season number the episode belongs to
+-episodeNumber (integer) – episode number of the tconst in the TV series
+
+
+## title.principals.tsv.gz 
+Contains the principal cast/crew for titles
+
+-tconst (string) - alphanumeric unique identifier of the title
+-ordering (integer) – a number to uniquely identify rows for a given titleId
+-nconst (string) - alphanumeric unique identifier of the name/person
+-category (string) - the category of job that person was in
+-job (string) - the specific job title if applicable, else '\N'
+-characters (string) - the name of the character played if applicable, else '\N'
+
+## title.ratings.tsv.gz 
+Contains the IMDb rating and votes information for titles
+
+-tconst (string) - alphanumeric unique identifier of the title
+-averageRating – weighted average of all the individual user ratings
+-numVotes - number of votes the title has received
+-name.basics.tsv.gz – Contains the following information for names:
+-nconst (string) - alphanumeric unique identifier of the name/person
+-primaryName (string)– name by which the person is most often credited
+-birthYear – in YYYY format
+-deathYear – in YYYY format if applicable, else '\N'
+-primaryProfession (array of strings)– the top-3 professions of the person
+-knownForTitles (array of tconsts) – titles the person is known for
+
+
+
+We obviously didn't need all of these columns and after filterings and columns selections (which we performed with Python in order to capitalize on the Pandas library's (in fact Numpy) vectorization features and thus compute multiple datapoints in the same time (25 million of rows originally)), we ended up with a merged Dataframe which we imported in R as bellow.
+
+```{r}
+setwd("C:/Users/Cheik/iCloudDrive/Desktop/MIM/adv stat/Project")
+
+Imdb=read.csv("Data/IMDB_enriched.csv",sep = ",",stringsAsFactors = F)
+skimr::skim(Imdb)
+```
+
+# Data processing and cleanings
+
+We begin by dropping any row not containing a value for the numerical variables we were interested in.
+Some variables such as runtimeMinutes and startYear|endyear are depicted as being qualitative (character) despite being obiviously numerical so we had to do the necessary computations for them to be considered as such by R for further calculations.
+```{r}
+
+Imdb$runtimeMinutes=na_if(Imdb$runtimeMinutes, "\\N")#we replace the \\N values to NA so that r can interpret them
+Imdb$runtimeMinutes=as.numeric(Imdb$runtimeMinutes)#We convert everything to numeric values
+Imdb=Imdb %>% drop_na(runtimeMinutes)#We get rid of the rows which don"t specify the number of minutes
+
+
+Imdb_actors=Imdb %>% filter(category %in% c("actor","actress")) #We will focus our analysis on actors and actresses so we get rid of directors and producers
+colnames(Imdb_actors)[which(names(Imdb_actors) == "category")] = "Actor_gender" #We rename the column accordingly it makes everything easier
+
+
+#We drop also the values for which we don't have the year(startYear especially and actor birthYear)
+
+Imdb_actors[,c("startYear","birthYear")]
+
+#get rid of the NA and convert to numeric
+Imdb_actors[,c("startYear","birthYear")]=na_if(Imdb_actors[,c("startYear","birthYear")],"\\N")
+
+Imdb_actors=Imdb_actors %>% drop_na(startYear,birthYear)
+
+Imdb_actors[,c("startYear","birthYear")]=sapply(Imdb_actors[,c("startYear","birthYear")],as.numeric)
+
+```
+
+We decided that it might be relevant to calculate the age of the actor when the title was first published (for a movie it's the year of publication, for a TvSeries for example it's the year of he first episode).
+```{r}
+Imdb_actors$age_at_start=Imdb_actors$startYear-Imdb_actors$birthYear
+
+#We convert the relevant variables to dummy variables
+```
+
+We also convert the already existing categorical variables (binary) to R factors, otherwise they would just be interpreted as regular text (i.e character class)
+
+```{r}
+Imdb_actors$isAdult=as.factor(Imdb_actors$isAdult)
+#let's code actors as 0 and actresses as 1
+Imdb_actors$Actor_gender=as.factor(Imdb_actors$Actor_gender)
+levels(Imdb_actors$Actor_gender)=c(0,1)
+```
+
+In order to reduce the size of our Dataframe and make it more relevant to inference analysis, we have decided to narrow the title types to only Movies and TvSeries (it might be appropriate to seperate those two title types later and analyze them seperately)
+```{r}
+Imdb_movies_series=Imdb_actors %>% filter(titleType %in% c("tvSeries","movie"))
+
+print("size of the old dataframe")
+dim(Imdb)
+
+print("size of the new dataframe specific to mives and series")
+dim(Imdb_movies_series)
+```
+Now let's have a look at the gender distribution by age: is the  age distribution significantly different depending on an actor's gender?
+
+#Gender distribution
+```{r}
+Imdb_movies_series %>% group_by(Actor_gender) %>% summarize(avg_age=mean(age_at_start))
+
+ggplot(Imdb_movies_series, aes(y = age_at_start,x=Actor_gender, color=Actor_gender)) + geom_boxplot()+scale_y_log10()+labs(title="Age at the start of a TvSeries or Movie",caption="Imdb", x= "gender")+scale_x_discrete(labels=c("Actor","Actress"))
+```
+#Prepare dataset for linear reggression analysis: 
+
+We have duplicate rows in our datasets for now: a movie/tv series title will be replicated as many times as there are actors/actresses: in fact, each row corresponds not to a title but to an actor/actress who has been casted in that show. It doesn't mean that each row corresponds to an actor/actress per se:  but since an actor cannot be casted twice on the same movie/tvSeries he/she will appear at most one time per title.
+
+We need to summarize our dataset in such a way that each row corresponds to a title. For that we would ultimately need to summarize the actor/actress related columns which are 
+- Actor_gender
+- PrimaryName
+- birthYear
+- deathYear
+- age_at_start (=>age of the actor when the movie was published/ when the TvSeries started to be broadcast)
+
+We will only keep the Actor_gender  which is a categorical variable (0 for actor 1 for Actress) and age_at_start. 
+Since each row corresponds to either 0 or 1 we will compute a ratio of Actors:Actresses (we will try to check for the effects of this ratio on the title's rating)
+For the age_at_start we will simply compute the average age(regardless of the gender) of the actors (and check for it's effect on ratings)
+
+To construct our final Dataframe we will create a series of dataframes which we will merge together (by joining data) using the tconst variable which is the unique ID of each title. Since we are calculating a ratio, this means that if a movie or tvseries has exlusively only actors or actresses we exclude those titles because our computation might try to divide by 0
+
+```{r}
+count_actors=Imdb_movies_series %>% group_by(tconst) %>% count(Actor_gender)%>% arrange(desc(tconst))
+
+ratio_actors=count_actors %>% group_by(tconst) %>% summarize(ratio_actor_actress=(n[Actor_gender==0]/n[Actor_gender==1]))#divide number of actors by number of actresses
+
+
+avg_age=Imdb_movies_series %>% group_by(tconst) %>% summarize(Avg_age= mean(age_at_start))
+
+#we merge both datasets starting with the smaller ratio_actors
+final_df=plyr::join(x=ratio_actors,y=avg_age,by="tconst", type="left",match="all")
+
+#we add the other info from the main dataset
+final_df=plyr::join(x=final_df,y=Imdb_movies_series,by="tconst", type="left", match="first")
+
+#we drop the columns we don't plan to use
+final_df=subset(final_df,select=c("tconst","titleType","primaryTitle","isAdult","startYear","runtimeMinutes","genres","averageRating","numVotes","Avg_age","ratio_actor_actress"))
+
+
+# We check the columns that are supposed to be numeric and those that aren't
+sapply(final_df,class)
+```
+
+```{r}
+summary(final_df)
+```
+# Analyzing movies and tvSeries simultaneously ? 
+Before going further into the regression modeling, we first have to check that our dataset doesn't contain too many discrepencies.
+
+First, is it relevant to analyze our dataframe as whole containing movies and tvSeries or is it better to seperate them ? Intuitively it seems like that would not be a great idea given that some variables such as *runTimeminutes* will be significantly different for TVseries and movies.
+
+We will use three tools to assess whether doing so is relevant or not (i.e if we need to analyze them seperately)
+1) boxplots
+2) compare their std deviations
+3) histogram (to compare their distributions)
+
+```{r}
+#Boxplots
+ggplot(final_df, aes(y = averageRating ,x=titleType, color=titleType)) + geom_boxplot()+labs(title="Average rating by title type",caption="Source: Imdb", x= "Title type")
+
+ggplot(final_df, aes(y = runtimeMinutes ,x=titleType, color=titleType)) +scale_y_log10()+ geom_boxplot()+labs(title="Average rating by title type",caption="Source: Imdb", x= "Title type")
+
+#Boxplot summary plus variances
+
+#•average rating variable
+final_df %>% select(averageRating,titleType, runtimeMinutes) %>% group_by(titleType) %>% summarize(min=min(averageRating), max=max(averageRating), median=median(averageRating), q1=quantile(averageRating,probs=0.25), q3=quantile(averageRating,probs=0.75),iqr=IQR(averageRating),stdev= sd(averageRating), variance=var(averageRating))
+
+#runtimeMinutes
+final_df %>% select(averageRating,titleType, runtimeMinutes) %>% group_by(titleType) %>% summarize(min=min(runtimeMinutes), max=max(runtimeMinutes), median=median(runtimeMinutes), q1=quantile(runtimeMinutes,probs=0.25), q3=quantile(runtimeMinutes,probs=0.75),iqr=IQR(runtimeMinutes),stdev= sd(runtimeMinutes), variance=var(runtimeMinutes))
+
+```
+We see on these two boxplots that movies and Series behave in very different ways for these two variables. 
+-The ratings are somewhat different but the difference between the third quantile and the first (=50% of the population) is approximately the same (we see that in the summary table with iqr of respectively 1.5 and 1.4 for movies and series). The observations for the TvSeries are more widely spread than those for Movies with a standard deviation of 1.13 for movies and 1.23 for tvSeries. 
+- The differences are even more striking for the runtimeMinutes variable where the iqr of movies is around 100 minutes with 50% of the titles having a duration of 85 to 105 minutes while 50% of the tvSeries are ranging from 21 minutes to 60. The standard deviations are also significantly different: the duration of tvSeries (std= 98) are four times more widespread than for movies(std= 24).
+
+Now let's have a look at the distributions for each of these titleTYpe on the variable averageRating (which will be our depoendant variable in the regression analysis)
+
+```{r}
+ggplot(subset(final_df,titleType=="tvSeries"), aes(x = averageRating)) +
+        geom_histogram(aes(fill = ..count..), binwidth =0.5) +
+        scale_x_continuous(name = "IMDB rating",
+                           breaks = seq(0,10),
+                           limits=c(1, 10)) +
+        ggtitle("Histogram of IMDB TvSeries rating") +
+        scale_fill_gradient("Count", low = "blue", high = "red")
+
+ggplot(subset(final_df,titleType=="movie"), aes(x = averageRating)) +
+        geom_histogram(aes(fill = ..count..), binwidth =0.5) +
+        scale_x_continuous(name = "IMDB rating",
+                           breaks = seq(0,10),
+                           limits=c(1, 10)) +
+        ggtitle("Histogram of IMDB movies rating") +
+        scale_fill_gradient("Count", low = "blue", high = "red")
+
+```
+The distribution for these two variables are also different: movies have an almost symetric normal distribution for the averageRating while tvSeries have a skewed on the right distribution for that same variable.
+
+As a consequence, it seems more than reasonable to seperate the dataset into movies and series as these two title types seem to behave in different ways. We also notice the presence of outliers on the boxplots and these might heavily affect our modeling process.
+
+```{r}
+print("size of initial dataFrame")
+dim(final_df)
+
+final_df_movies=subset(final_df,titleType=="movie")
+print("Size of movies dataFrame")
+dim(final_df_movies)
+
+final_df_series=subset(final_df,titleType=="tvSeries")
+print("Size of TVseries dataFrame")
+dim(final_df_series)
+```
+#Outlier exclusion function 
+
+We have decided to compute our own outlier exclusion function (which is very basic as it doesn't do error handling but it serves are purpose very well in this case).
+It simply follows the outlier exclusion rule of thumb:
+1) it takes a dataframe and its column as an input
+2) It calculate the 1st and 3rd quartiles for the columns specified
+3) It calculates the interquartile range 
+4) It calculates the up and low ranges beyond which data should be excluded
+5) returns a filtered dataset excluding the outliers
+
+
+```{r}
+# Function which excludes the outliers of a dataset data and a numerical column x
+out_exc= function (data=df,subdata=df$column_name) {
+  Q=quantile(subdata, probs=c(0.25,0.75),na.rm = FALSE)
+  iqr= IQR(subdata)
+  up=  Q[2]+1.5*iqr # Upper Range  
+  low= Q[1]-1.5*iqr # Lower Range
+
+
+  return(subset(data, subdata > low & subdata < up))
+}
+
+
+print("Number of rows in Series DF\n")
+nrow(final_df_series)
+
+print("Number of rows in Movies DF\n")
+nrow(final_df_movies)
+```
+# Linear regression
+
+We would like to predict the average rating of a title given:
+- The ratio of actor/actress cast for that tile (gender effect ?). _Does having more actors than actresses affect the appreciation/quality of a title ?_ (Quantitative)
+- Number of votes that title generated (popularity effect ?). _Are the most popular titles also the most appreciated/the best titles ?_ (Quantitative)
+- The average age of the actors cast on a title (ageeffect ?). _Does having younger or older actors affect the appreciation of that title ?_ (Quantitative)
+- The year when the title was published (time effect ?). _Is it true that the best titles are the old ones?_ (Quantitative) (possible colinearity with the average age column)
+- The duration of a title (in minutes). _Does the length of a title affect its rating ?_ 
+- The status of a movie: adult movie or not.(qualitative).
+
+
+## Sampling
+
+Given the number of observations for both datasets, it might be wiser to sample the datasets for a better readability of the scatterplots we intend to draw.
+It is safer to first create copies of our dataframes and work with them (if we do a bad manipulation we can still go back a few chunks before and reload the original dataframes, otherwise we would need to re-execute all of the code which is costly for our memory and takes time).
+
+```{r}
+final_df1=final_df
+final_df_series1=final_df_series
+final_df_movies1=final_df_movies
+
+final_df_series1=mosaic::sample(x=final_df_series1,1000)
+final_df_movies1=mosaic::sample(x=final_df_movies1,size=1000)
+```
+
+
+```{r}
+
+nums= sapply(final_df_series1,is.numeric) # select numeric columns
+series.num= final_df_series1[,nums]
+corr.test(series.num,y=NULL,use='pairwise',method='pearson',adjust='holm',alpha=0.05)
+
+```
+
+
+```{r}
+
+
+final_df1[,c("averageRating","numVotes","runtimeMinutes", "ratio_actor_actress", "Avg_age")]=sapply(final_df1[,c("averageRating","numVotes","runtimeMinutes", "ratio_actor_actress", "Avg_age")],log)
+
+final_df_series1[,c("averageRating","numVotes","runtimeMinutes", "ratio_actor_actress", "Avg_age")]=sapply(final_df_series1[,c("averageRating","numVotes","runtimeMinutes", "ratio_actor_actress", "Avg_age")],log)
+
+final_df_movies1[,c("averageRating","numVotes","runtimeMinutes", "ratio_actor_actress", "Avg_age")]=sapply(final_df_movies1[,c("averageRating","numVotes","runtimeMinutes", "ratio_actor_actress", "Avg_age")],log)
+
+
+ggplot(final_df, aes(x = numVotes, y =averageRating)) + scale_x_log10()+scale_y_log10()+ geom_point(alpha=0.23,show.legend = T)+geom_smooth()+ labs(title="Relationship between votes and ratings",caption = "Source: Imdb")+facet_wrap("titleType")
+
+
+cor(x=final_df$averageRating,y=final_df$numVotes)
+
+```
+
+
+```{r}
+final_df_series=out_exc(data=final_df_series1,final_df_series$averageRating)
+final_df_series=out_exc(data=final_df_series1,final_df_series$numVotes)
+final_df_series=out_exc(data=final_df_series1,final_df_series$runtimeMinutes)
+final_df_series=out_exc(data=final_df_series1,final_df_series$ratio_actor_actress)
+final_df_series1=out_exc(data=final_df_series1,final_df_series$Avg_age)
+
+print("Number of rows in Series DF\n")
+nrow(final_df_series)
+
+
+
+```
+```{r}
+ggplot(final_df_series1, aes(x = numVotes, y =averageRating))+scale_x_log10() +scale_y_log10()+geom_point(alpha=0.23,show.legend = T)+geom_smooth()+ labs(title="Relationship between votes and ratings",caption = "Source: Imdb")
+
+final_df_series1=out_exc(data=final_df_series1,final_df_series1$averageRating)
+cor(x=final_df_series1$averageRating,y=final_df_series1$numVotes)
+
+
+
+ggplot(final_df_series1, aes(x = runtimeMinutes, y =averageRating)) + scale_x_log10()+scale_y_log10()+geom_point(alpha=0.23,show.legend = T)+geom_smooth()+ labs(title="Relationship between votes and ratings",caption = "Source: Imdb")
+
+cor(x=final_df_series$runtimeMinutes,y=final_df_series$averageRating)
+
+final_df_series1=out_exc(data=final_df_series1,final_df_series1$runtimeMinutes)
+
+
+ggplot(final_df_series1, aes(x = Avg_age, y =averageRating)) + scale_y_continuous()+ scale_x_discrete()+geom_point(alpha=0.23,show.legend = T)+geom_smooth()+ labs(title="Relationship between votes and ratings",caption = "Source: Imdb")
+
+cor(x=final_df_series1$Avg_age,y=final_df_series1$averageRating)
+
+ggplot(final_df_series1, aes(x = ratio_actor_actress, y =averageRating))+geom_point(alpha=0.23,show.legend = T)+geom_smooth()+ scale_x_discrete()+scale_y_continuous()+ labs(title="Relationship between votes and ratings",caption = "Source: Imdb")
+
+cor(x=final_df_series1$ratio_actor_actress,y=final_df_series1$averageRating)
+
+
+
+# poynomial
+summary(lm(averageRating~log(poly(numVotes,2))+log(Avg_age)+log(ratio_actor_actress),data=final_df_series1))
+ # x must be numeric
+
+
+```
+```{r}
+final_df_series=out_exc(data=final_df_series,final_df_series$averageRating)
+#final_df_series=out_exc(data=final_df_series,final_df_series$numVotes)
+final_df_series=out_exc(data=final_df_series,final_df_series$runtimeMinutes)
+final_df_series=out_exc(data=final_df_series,final_df_series$ratio_actor_actress)
+final_df_series=out_exc(data=final_df_series,final_df_series$Avg_age)
+```
+
+
+
+
+
+
+
+
+
+
