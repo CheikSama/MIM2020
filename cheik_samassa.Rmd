@@ -1,0 +1,169 @@
+---
+title: 'Pre-programme Assignment 1'
+author: "Cheik Samassa"
+date: "20/10/2020"
+output:
+  html_document:
+    highlight: zenburn
+    theme: flatly
+    toc: yes
+    toc_float: yes
+  word_document:
+    toc: yes
+---
+
+
+```{r load-libraries, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)  # Load ggplot2, dplyr, and all the other tidyverse packages
+library(gapminder)  # gapminder dataset
+library(here)
+```
+ 
+## Task1: a short biography
+
+My name is **Cheik Samassa** I am 22, from Paris, France. I have a bachelor in Demography and a Master's degree in Big data and social Analysis. I am already familiar with R which I previously used for:  
+- statistical modelling 
+- survival analysis
+- cartography. 
+Neertheless, I am more confortable (and prefer) using Python, especially the Pandas library. 
+Despite having been through a significant amount of statistics courses, I don't consider myself being "good in stats" and I am thus looking forward to this course which will help me strengthen and deepen my statistics skills and hopefully become "good in stats".
+_Ps: I really like the fact that we have to go through introductory courses to R before using it to deep dive into the statistical concepts. My previous statistics teachers would just start explaining things from a mathematical perspective and then jump into  the coding part using R without even making sure that everyone is already capable of using/understanding R_
+
+
+
+Here is a link to an analysis I made with a classmate on the New York citybikes last year : https://rpubs.com/CheikSama/608619
+
+And here is an image (I spent way too much trying to find a good one, I am satisfied enough with the result though)
+
+![Alt Text](https://images8.alphacoders.com/103/1033651.jpg)
+
+## Task 2: `gapminder` country comparison
+
+You have seen the `gapminder` dataset that has data on life expectancy, population, and GDP per capita for 142 countries from 1952 to 2007. To get a glipmse of the dataframe, namely to see the variable names, variable types, etc., we use the `glimpse` function. We also want to have a look at the first 20 rows of data.
+
+```{r}
+glimpse(gapminder)
+
+head(gapminder, 20) # look at the first 20 rows of the dataframe
+
+```
+
+Your task is to produce two graphs of how life expectancy has changed over the years for the `country` and the `continent` you come from. 
+
+I have created the `country_data` and `continent_data` with the code below. 
+
+```{r}
+country_data <- gapminder %>% 
+            filter(country == "France")
+
+continent_data <- gapminder %>% 
+            filter(continent == "Europe")
+```
+
+First, create a plot of life expectancy over time for the single country you chose. You should use  `geom_point()` to see the actual data points and `geom_smooth(se = FALSE)`  to plot the underlying trendlines. You need to remove the comments **#** from the lines below for your code to run.
+
+```{r, lifeExp_one_country}
+ggplot(data = country_data, mapping = aes(x = year, y = lifeExp))+
+geom_point() +
+geom_smooth(se = T)
+
+```
+
+Next we need to add a title. Create a new plot, or extend plot1, using the `labs()` function to add an informative title to the plot.
+
+```{r, lifeExp_one_country_with_label}
+ggplot(data = country_data, mapping = aes(x = year, y = lifeExp))+
+geom_point() +
+geom_smooth(se = T)+ggtitle("Evolution of life expectency in France")
+```
+
+Secondly, produce a plot for all countries in the *continent* you come from. (Hint: map the `country` variable to the colour aesthetic).  
+
+```{r lifeExp_one_continent}
+ggplot(data = continent_data , mapping = aes(x = year , y = lifeExp , colour= country))+
+geom_point()+ 
+geom_smooth(se = FALSE) + labs (title="Evolution of life expexctancy in Europe", subtitle="From 1952", x="year",y="life expectancy")
+```
+
+Finally, using the original `gapminder` data, produce a life expectancy over time graph, grouped (or faceted) by continent. We will remove all legends, adding the `theme(legend.position="none")` in the end of our ggplot.
+
+```{r lifeExp_facet_by_continent}
+ggplot(data = gapminder , mapping = aes(x = year , y =lifeExp))+ geom_point() + 
+geom_smooth(se = FALSE) +
+facet_wrap(~continent) +
+theme(legend.position="none") + #remove all legends
+labs (title="Life expectancy over time", subtitle="by continent since 1952",y="life expectancy", x="year") 
+#   null
+```
+
+Given these trends, what can you say about life expectancy since 1952? Again, don't just say what's happening in the graph. Tell some sort of story and speculate about the differences in the patterns.
+
+> Type your answer after this blockquote.
+
+## Task 3: Brexit voting
+
+We will have a quick look at the results of the 2016 Brexit vote in the UK. First we read the data using `read_csv()` and have a quick glimpse at the data
+
+```{r load_brexit_data, warning=FALSE, message=FALSE}
+setwd("/Users/cheiksamassa/Library/Mobile Documents/com~apple~CloudDocs")
+brexit_results <- read_csv(here::here("Data","brexit_results.csv"))
+
+
+glimpse(brexit_results)
+```
+
+
+The data comes from [Elliott Morris](https://www.thecrosstab.com/), who cleaned it and made it available through his [DataCamp class on analysing election and polling data in R](https://www.datacamp.com/courses/analyzing-election-and-polling-data-in-r).
+
+Our main outcome variable (or y) is `leave_share`, which is the percent of votes cast in favour of Brexit, or leaving the EU. Each row is a UK [parliament constituency](https://en.wikipedia.org/wiki/United_Kingdom_Parliament_constituencies). 
+
+To get a sense of the spread of the data, plot a histogram and a density plot of the leave share in all constituencies.
+
+```{r brexit_histogram, warning=FALSE, message=FALSE}
+ggplot(brexit_results, aes(x = leave_share)) +
+  geom_histogram(binwidth = 2.5)+labs (title="Distribution of Brexit votes", subtitle=" by parliament_constituencies",y="number", x="% in in favor") 
+
+ggplot(brexit_results, aes(x = leave_share)) +
+  geom_density()
+
+```
+
+One common explanation for the Brexit outcome was fear of immigration and opposition to the EU's more open border policy. We can check the relationship (or correlation) between the proportion of native born residents (`born_in_uk`) in a constituency and its `leave_share`. To do this, let us get the correlation between the two variables
+
+```{r brexit_immigration_correlation}
+brexit_results %>% 
+  select(leave_share, born_in_uk) %>% 
+  cor()
+```
+
+The correlation is almost 0.5, which shows that the two variables are positively correlated. 
+
+We can also create a scatterplot between these two variables using `geom_point`. We also add the best fit line, using  `geom_smooth(method = "lm")`. 
+
+```{r brexit_immigration_plot}
+ggplot(brexit_results, aes(x = born_in_uk, y = leave_share)) +
+  geom_point(alpha=0.3) +
+  geom_smooth(method = "lm") +
+  theme_bw() + labs (title="Votes in favor of brexit by proportion of native born in residents ", subtitle="by %",y="Brexit_share (%)", x="Proportion of UK born residents (%)") 
+```
+
+You have the code for the plots, I would like you to revisit all of them and use the `labs()` function to add an informative title, subtitle, and axes titles to all plots.
+
+What can you say about the relationship shown above? Again, don't just say what's happening in the graph. Tell some sort of story and speculate about the differences in the patterns.
+
+> Type your answer after, and outside, this blockquote.
+
+__We can say that the amount of people in favor of Brexit increases with the proportion of UK born residents: Constituents where there is a high number of native born residents are more likely to vote for Brexit than Consituents where there are less UK born residents. We could even speculate that people born in the United Kingdom are more willing to vote for Brexit than the others__. 
+
+
+# Submit the assignment
+
+Knit the completed R Markdown file as ah HTML or Word document (use the "Knit" button at the top of the script editor window) and upload it to Canvas.
+
+
+## Details
+
+If you want to, please answer the following
+
+- Approximately how much time did you spend on this problem set: __30 minutes__
+- What, if anything, gave you the most trouble: __Finding smart labels for the graphs and a nice image__. 
