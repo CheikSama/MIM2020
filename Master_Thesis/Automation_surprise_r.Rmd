@@ -1,0 +1,178 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+
+
+
+```{r}
+install.packages(c("polycor","skimr","ggplot2","ltm"))
+
+data= read.csv("automation_transformed.csv")
+library(polycor)
+library(skimr)
+library(ggplot2)
+library(ltm)
+library(dplyr)
+
+business_function=read.csv("business_functions - business_functions.csv")
+tools_used=read.csv("tools_used.csv")
+
+```
+
+
+1) The organisation size is positively correlated to the number of occurrences of automation surprises. 
+```{r}
+ggplot(data, aes(x = Size.company, y =occurrence.surprise)) + scale_x_log10() + geom_point(alpha=0.23,show.legend = T)+geom_smooth(method="lm")+ labs(title="Relationship between organisation size and number of  automation surprises")+geom_jitter()+xlab('Size organisation')+ylab("number of automation surprises")
+
+polychor(data$Size.company,data$occurrence.surprise)
+
+```
+2)  An individual’s experience (in time) with automated processes (regardless of their skillset) negatively impacts the number of occurrences of automation surprises
+```{r}
+ggplot(data, aes(x = Automation.experience, y =occurrence.surprise)) + geom_point(alpha=0.23,show.legend = T)+ scale_x_log10()+geom_smooth(method="lm")+ labs(title="Relationship between experience with automation and number of automation surprises")+geom_jitter()+xlab("Experience with automation (in years)")+ylab("number of automation surprises") 
+
+polychor(x=data$Automation.experience,y=data$occurrence.surprise)
+```
+
+3) The higher the number of business functions a task is automated for, the more freauently it will surprise
+
+
+```{r}
+
+ggplot(data, aes(x = Count_functions, y =occurrence.surprise)) + geom_point(alpha=0.23,show.legend = T)+geom_smooth(method="lm")+ labs(title="Relationship between the number of business functions and number of automation surprises")+geom_jitter() + scale_x_log10()+xlab("number of business functions")+ylab("number of automation surprises") 
+
+polychor(x=data$Count_functions,y=data$occurrence.surprise)
+```
+4)  The more numerous the number of people interacting with the automation, and the more diverse they are (departments) the more frequently an automation will surprise.
+Moreover, the number of people and number of departments interacting with the automation are two highly dependant variables
+
+```{r}
+#people vs department
+ggplot(data, aes(x = People_interaction , y =depeartment.interaction)) + geom_point(alpha=0.23,show.legend = T)+ scale_x_log10()+geom_smooth(method="lm")+geom_jitter()+ labs(title="Relationship between department interaction and people interaction with automation") +xlab("number of people interacting with automation")+ylab("number of departments interacting with automation") 
+polychor(x=data$People_interaction,y=data$depeartment.interaction)
+
+
+#people vs automation surprise
+ggplot(data, aes(x = People_interaction , y =occurrence.surprise)) + scale_x_log10()+geom_point(alpha=0.23,show.legend = T)+geom_smooth(method="lm")+geom_jitter()+ labs(title="Relationship between people interaction and number of automation surprises")+xlab("number of people interacting with automation")+ylab("number of automation surprises") 
+
+polychor(x=data$People_interaction,y=data$occurrence.surprise)
+
+#departments vs automation surprises
+ggplot(data, aes(x = depeartment.interaction , y =occurrence.surprise)) + scale_x_log10()+geom_point(alpha=0.23,show.legend = T)+geom_smooth(method="lm")+geom_jitter()+ labs(title="Relationship between department interaction and number of automation surprises") +xlab("number of departments interacting with automation")+ylab("number of automation surprises") 
+
+polychor(x=data$depeartment.interaction,y=data$occurrence.surprise)
+```
+
+5)  The company’s maturity in terms of digital transformation (both in terms of active and passive culture) is negatively correlated with the occurrence of automation surprise and resulting impact on the organisation.
+```{r}
+ggplot(data, aes(x = Digitalisation.level , y =occurrence.surprise)) + scale_x_log10()+geom_point(alpha=0.23,show.legend = T)+geom_smooth(method="lm")+ labs(title="Relationship between digital transformation maturity with number of surprise")+geom_jitter()+xlab("level of maturity")+ylab("number of automation surprises")
+
+polychor(x=data$Digitalisation.level,y=data$occurrence.surprise)
+```
+
+
+6) The more complicated for the user the process (or system or task) we try to automate for the user (and simplify through automation),  the more likely (or frequent) an automation surprise is to occur 
+The frequency of automation surprises is positively correlated with the level of automation: the higher the level of automation the more likely is automation to surprise
+
+The level of complication of the automation will be relativised to its user: 
+To get a sense of how complicated a given automation is perceived by its user, we will make the assumption that a low level of understanding of how the automation works illustrate a relatively high level of perceived complication for the user.
+
+```{r}
+
+#understanding of how the automation works
+ggplot(data, aes(x = rating_how , y =occurrence.surprise)) + scale_x_log10()+geom_point(alpha=0.23,show.legend = T)+geom_smooth(method="lm")+ labs(title="Relationship between level of understanding of automation and number of automation surprises")+geom_jitter()+xlab("rating of level of understanding of automation")+ylab("number of automation surprises")
+
+polychor(x=data$rating_how,y=data$occurrence.surprise)
+
+#understanding of why a task, function or process is automated
+ggplot(data, aes(x = rating_why , y =occurrence.surprise)) + scale_x_log10()+geom_point(alpha=0.23,show.legend = T)+geom_smooth(method="lm")+ labs(title="Relationship between level of understanding of task, function or process and number of automation surprises")+geom_jitter()+xlab("rating of level of understanding of task, function or process")+ylab("number of automation surprises")
+
+polychor(x=data$rating_why,y=data$occurrence.surprise)
+
+#ability to fix in case of a breakdown
+ggplot(data, aes(x = rating.fix , y =occurrence.surprise)) + scale_x_log10()+geom_point(alpha=0.23,show.legend = T)+geom_smooth(method="lm")+ labs(title="Relationship between experience with automation and number of automation surprises")+geom_jitter()+xlab("rating of level of ability to fix automation")+ylab("number of automation surprises")
+
+polychor(x=data$rating.fix,y=data$occurrence.surprise)
+
+mean(data$rating_how)
+mean(data$rating_why)
+mean(data$rating.fix)
+
+```
+
+7) The business functions a task is automated (which we will assume reflects the type of the tasks involved has an impact on the occurrence of automation surprises: 
+```{r}
+business_function$Business.function_automated=factor(business_function$Business.function_automated)
+
+levels(business_function$Business.function_automated)=c("aftersales service","General management and firm infrastructure","Human resources management","Marketing, sales, and customer accounts","Operations","Procurement, logistics, and distribution","ProductService Development","Strategic management","Technology and process development")
+
+functions_avg=business_function %>% group_by(business_function$Business.function_automated )%>% summarise(mean(Surprise))
+
+functions_count=business_function %>% group_by(business_function$Business.function_automated ) %>% summarise(n())
+
+data_summarised=data.frame(functions_names,functions_count,functions_avg)
+
+ggplot(data_summarised, aes(x=business_function.Business.function_automated,y=mean.Surprise.)) + 
+  geom_bar(stat="identity") +coord_flip()+ scale_fill_brewer(palette = "Set1")
+
+
+```
+
+8)   Technical expertise or experience in the design of the automation is negatively correlated with the occurrence of automation surprise
+
+```{r}
+
+#contribution
+mean_surprise_contribution=data %>% group_by (Contribution) %>% summarise(mean(occurrence.surprise))
+
+mean_surprise_contribution$Contribution=as.factor(mean_surprise_contribution$Contribution)
+levels(mean_surprise_contribution$Contribution)=c("No","Yes")
+ggplot(mean_surprise_contribution,aes(x=Contribution,y=`mean(occurrence.surprise)`))+ geom_bar(stat="identity") +scale_fill_brewer(palette = "Set1")+ labs(title="Relationship between contribution to automation and occurrence of automation surprises")+ylab("average number of automation surprises$")
+
+mean_surprise_contribution
+
+mean_surprise_technical=data %>% group_by (has.technical.role) %>% summarise(mean(occurrence.surprise))
+
+#technical profile
+mean_surprise_technical$has.technical.role=factor(mean_surprise_technical$has.technical.role)
+levels(mean_surprise_technical$has.technical.role)=c("Yes","No")
+ggplot(mean_surprise_technical,aes(x=has.technical.role,y=`mean(occurrence.surprise)`))+ geom_bar(stat="identity") +scale_fill_brewer(palette = "Set1")+ylab("average number of automation surprises")+ labs(title="Relationship between technical position and number of automation surprises")
+
+mean_surprise_technical
+
+```
+
+9) The number tools involved in an automation is positively correlated to the number of automation surprises
+```{r}
+ggplot(data, aes(x = Count_tools, y =occurrence.surprise)) + geom_point(alpha=0.23,show.legend = T)+geom_smooth(method="lm")+ labs(title="Relationship between experience with automation and occurrence of surprise",caption = "Source: Imdb")+geom_jitter() + scale_x_log10()#this needs to be related to whether they automated the task or not
+
+polychor(x=data$Count_tools,y=data$occurrence.surprise)
+```
+
+10) The type of tool used also impacts the occurrence of surprises. 
+We recode the tools used by their level of customisability: the more external a tool, the more likely it's automation is likely to surprise
+```{r}
+
+tools_used$level_cust=factor(tools_used$Tool)
+levels(tools_used$level_cust)=c(3,1,1,2,2)
+
+ggplot(tools_used, aes(x = as.numeric(level_cust) , y =Surprise)) + scale_x_log10()+geom_point(alpha=0.23,show.legend = T)+geom_smooth(method="lm")+ labs(title="Relationship between tool customizability and number of automation surprises")+geom_jitter()+xlab("tool level of customizability")+ylab("number of automation surprises")
+
+polychor(x=as.numeric(tools_used$level_cust),y=tools_used$Surprise)
+
+
+```
+
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
